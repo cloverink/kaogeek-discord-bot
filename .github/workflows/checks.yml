@@ -46,11 +46,6 @@ jobs:
     name: Run Test
     timeout-minutes: 10
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      pull-requests: write
-
     steps:
       - uses: actions/checkout@v3
       - uses: pnpm/action-setup@v2
@@ -67,8 +62,33 @@ jobs:
       - name: 'Report Coverage'
         if: github.event_name == 'pull_request'
         uses: davelosert/vitest-coverage-report-action@v1
+
+  smoke-e2e-check:
+    name: Run Smoke Test
+    concurrency: smoke-test
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    env:
+      DATABASE_URL: 'file:./smoke.db'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install
+      - name: Generate Prisma client
+        run: pnpm migrate
+      - name: 'Smoke Test'
+        env:
+          BOT_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+          GUILD_ID: ${{ secrets.CI_GUILD_ID }}
+          MOD_CHANNEL_ID: ${{ secrets.CI_MOD_CHANNEL_ID }}
+          SMOKE_TESTER_BOT_TOKEN: ${{ secrets.CI_SMOKE_TESTER_BOT_TOKEN }}
+        run: pnpm test:smoke
 
   docker-smoke:
     name: Run Docker Smoke Test
@@ -95,4 +115,4 @@ jobs:
       - name: Perform database migrations
         run: cd smoke && docker compose run --rm bot npx prisma db push && test -f .data/bot.db
       - name: Run smoke test
-        run: cd smoke && docker compose run --rm bot dist/client.js --smoke
+        run: cd smoke && docker compose run --rm bot dist/index.js --smoke
